@@ -20,7 +20,7 @@ import time
 # Start Time
 t_i = 0
 # End Time
-t_f = 100
+t_f = 1000
 # Step Interval = h
 Step = 1
 # Time array
@@ -114,11 +114,14 @@ Ecc = get_e(r_i, sol.y_events[0][0][0])
 
 
 # Creates I_ddot tensor
+XY = np.zeros(shape=(2, sol.y[0].size))
+I = np.zeros(shape=(2, 2, sol.y[0].size))
+I_dot = np.zeros(shape=(2, 2, sol.y[0].size - 2))
+I_ddot = np.zeros(shape=(2, 2, sol.y[0].size - 4))
+
+
 def get_H():
-    XY = np.zeros(shape=(2, sol.y[0].size))
-    I = np.zeros(shape=(2, 2, sol.y[0].size))
-    I_dot = np.zeros(shape=(2, 2, sol.y[0].size - 2))
-    I_ddot = np.zeros(shape=(2, 2, sol.y[0].size - 4))
+    global XY, I, I_dot, I_ddot
     for i in range(sol.y[0].size):
         XY[0][i] = sol.y[0][i]*np.cos(sol.y[2][i])
         XY[1][i] = sol.y[0][i]*np.sin(sol.y[2][i])
@@ -136,7 +139,9 @@ def get_H():
         I_ddot[1][1][i] = (I_dot[1][1][i + 2] - I_dot[1][1][i]) / (sol.t[i + 2] - sol.t[i])
         I_ddot[1][0][i] = (I_dot[1][0][i + 2] - I_dot[1][0][i]) / (sol.t[i + 2] - sol.t[i])
         I_ddot[0][1][i] = (I_dot[0][1][i + 2] - I_dot[0][1][i]) / (sol.t[i + 2] - sol.t[i])
-    return I_ddot
+
+
+get_H()
 
 
 # Creates Plotting window
@@ -148,20 +153,21 @@ spec1 = gridspec.GridSpec(nrows=2, ncols=2, figure=fig1)
 ax1 = fig1.add_subplot(spec1[0, 0], projection='polar')
 # ax1.set_title('Orbit')
 orbit, = plt.polar(sol.y[2], sol.y[0])
+orbit_trace, = plt.polar(sol.y[2], sol.y[0], alpha=.5, linestyle="--", color="b")
 orbit_dot, = plt.polar(sol.y[2][0], sol.y[0][0], "or")
 plt.ylim(0, 20)
 
 # Plotting GW
 ax3 = fig1.add_subplot(spec1[1, 0])
 ax3.set_title('H+')
-h_xx, = plt.plot(sol.t[10: - 4], get_H()[0][0][10:])
-h_xx_dot, = plt.plot(sol.t[10], get_H()[0][0][10], "or")
+h_xx, = plt.plot(sol.t[10: - 4], I_ddot[0][0][10:])
+h_xx_dot, = plt.plot(sol.t[10], I_ddot[0][0][10], "or")
 plt.xlabel('t')
 
 ax4 = fig1.add_subplot(spec1[1, 1])
 ax4.set_title('Hx')
-h_xy, = plt.plot(sol.t[10: - 4], get_H()[1][0][10:])
-h_xy_dot, = plt.plot(sol.t[10], get_H()[1][0][10], "or")
+h_xy, = plt.plot(sol.t[10: - 4], I_ddot[1][0][10:])
+h_xy_dot, = plt.plot(sol.t[10], I_ddot[1][0][10], "or")
 plt.xlabel('t')
 
 
@@ -212,6 +218,7 @@ text_bot_L = TextBox(ax_text_E, ' ', initial=str(L))
 
 
 # Function to zoom in and out of orbit plot w/ scroll wheel
+# Need to fix scrolling ending program
 def zoom(ax, scale):
     def zoom_event(event):
         cur_ylim = ax.get_ylim()
@@ -222,11 +229,11 @@ def zoom(ax, scale):
         else:
             scale_fac = 1
         ax.set_ylim([0, cur_ylim[1]*scale_fac])
+        animation.event_source.stop()
         plt.draw()
-
+        animation.event_source.start()
     fig = ax.get_figure()
     fig.canvas.mpl_connect('scroll_event', zoom_event)
-
     return zoom_event
 
 
@@ -268,6 +275,7 @@ def update_ecc(val):
 def update_figures(Eval, Lval, rpval, eccval):
     global E, L, ISCO, IUCO, root1, r_i, r_p, Ecc, U_Eff, U_Eff_Func, Eff_Force, Eff_Force_Func, Phi_dot, Phi_dot_Func, y0, sol, animation
     start = time.time()
+    animation.event_source.stop()
     if rpval != r_p:
         print("Rp slider was updated")
         r_p = rpval
@@ -278,13 +286,19 @@ def update_figures(Eval, Lval, rpval, eccval):
         if np.round(E, 5) == np.round(U_Eff_Func(IUCO), 5):
             r_i = IUCO
             s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         elif np.round(E, 5) == np.round(U_Eff_Func(ISCO), 5):
             r_i = ISCO
             s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         else:
             root1 = sp.lambdify(r, E + (G * M / r) - ((L ** 2) / (2 * (r ** 2))) + ((G * M * (L ** 2)) / (r ** 3)))
             r_i = bisect(root1, a=IUCO, b=ISCO, disp=True)
             s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         s_L.set_val(L)
     elif eccval != Ecc:
         print("Ecc slider was updated")
@@ -296,12 +310,19 @@ def update_figures(Eval, Lval, rpval, eccval):
         if np.round(E, 5) == np.round(U_Eff_Func(IUCO), 5):
             r_i = IUCO
             s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         elif np.round(E, 5) == np.round(U_Eff_Func(ISCO), 5):
             r_i = ISCO
             s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         else:
             root1 = sp.lambdify(r, E + (G * M / r) - ((L ** 2) / (2 * (r ** 2))) + ((G * M * (L ** 2)) / (r ** 3)))
             r_i = bisect(root1, a=IUCO, b=ISCO, disp=True)
+            s_E.set_val(E)
+            animation = FuncAnimation(fig1, update, blit=True, interval=10)
+            animation.event_source.start()
         s_L.set_val(L)
     elif Lval != L:
         print("L slider was updated")
@@ -314,6 +335,8 @@ def update_figures(Eval, Lval, rpval, eccval):
         r_p = r_i
         s_rp.set_val(r_p)
         s_e.set_val(Ecc)
+        animation = FuncAnimation(fig1, update, blit=True, interval=10)
+        animation.event_source.start()
     elif Eval != E:
         print("E slider was updated")
         E = Eval
@@ -324,11 +347,14 @@ def update_figures(Eval, Lval, rpval, eccval):
         r_p = r_i
         s_rp.set_val(r_p)
         s_e.set_val(Ecc)
+        animation = FuncAnimation(fig1, update, blit=True, interval=10)
+        animation.event_source.start()
     else:
         print("Sliders are now updated")
         y0 = [r_i, rdot_i, phi_i]
         sol = solve_ivp(deriv, y0=y0, t_eval=Time, t_span=[t_i, t_f], rtol=1e-8, atol=1e-8, events=apoapsis_nt)
-        # orbit.set_data(sol.y[2], sol.y[0])
+        get_H()
+        orbit_trace.set_data(sol.y[2], sol.y[0])
         y = np.zeros_like(Ueff_Array)
         for i in range(y.size):
             y[i] = U_Eff_Func(Ueff_Array[i])
@@ -336,16 +362,11 @@ def update_figures(Eval, Lval, rpval, eccval):
         a2.set_data(r_i, U_Eff_Func(r_i))
         a3.set_data(Ueff_Array, energy_line(r_i))
         a4.set_data(r_p, U_Eff_Func(r_p))
-        h_xx.set_data(sol.t[0: - 4], get_H()[0][0])
-        h_xy.set_data(sol.t[0: - 4], get_H()[1][0])
-        h_xx_dot.set_data(sol.t[0], get_H()[0][0][0])
-        h_xy_dot.set_data(sol.t[0], get_H()[1][0][0])
+        # Need to fix auto scaling for gravitational wave plots
         ax3.relim()
         ax3.autoscale_view()
         ax4.relim()
         ax4.autoscale_view()
-        fig1.canvas.draw_idle()
-        animation = FuncAnimation(fig1, update, interval=10)
         print(time.time() - start)
 
 
@@ -367,21 +388,35 @@ text_bot_E.on_submit(submit_E)
 text_bot_L.on_submit(submit_L)
 
 
+def init_func():
+    a2.set_data([], [])
+    orbit_dot.set_data([], [])
+    orbit.set_data([], [])
+    h_xx.set_data([], [])
+    h_xx_dot.set_data([], [])
+    h_xy_dot.set_data([], [])
+    h_xy.set_data([], [])
+    return a2, orbit, orbit_dot, \
+           h_xx, h_xx_dot, h_xy, h_xy_dot
+
+
 def update(frame_number):
     start = time.time()
     a2.set_data(sol.y[0][frame_number], U_Eff_Func(r_i))
     orbit_dot.set_data(sol.y[2][frame_number], sol.y[0][frame_number])
     orbit.set_data(sol.y[2][:frame_number], sol.y[0][:frame_number])
-    h_xx.set_data(sol.t[:frame_number], get_H()[0][0][:frame_number])
-    h_xx_dot.set_data(sol.t[frame_number], get_H()[0][0][frame_number])
-    h_xy_dot.set_data(sol.t[frame_number], get_H()[1][0][frame_number])
-    h_xy.set_data(sol.t[:frame_number], get_H()[1][0][:frame_number])
+    h_xx.set_data(sol.t[:frame_number], I_ddot[0][0][:frame_number])
+    h_xx_dot.set_data(sol.t[frame_number], I_ddot[0][0][frame_number - 1])
+    h_xy_dot.set_data(sol.t[frame_number], I_ddot[1][0][frame_number - 1])
+    h_xy.set_data(sol.t[:frame_number], I_ddot[1][0][:frame_number])
     print(time.time() - start)
     if frame_number == (Step * t_f) - 5:
         animation.event_source.stop()
+    return a2, orbit, orbit_dot, \
+           h_xx, h_xx_dot, h_xy, h_xy_dot
 
 
-animation = FuncAnimation(fig1, update, interval=10)
+animation = FuncAnimation(fig1, update, blit=True, interval=10)
 
 
 plt.show()
