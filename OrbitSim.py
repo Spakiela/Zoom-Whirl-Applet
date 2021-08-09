@@ -20,7 +20,7 @@ import time
 # Start Time
 t_i = 0
 # End Time
-t_f = 1000
+t_f = 100
 # Step Interval = h
 Step = 1
 # Time array
